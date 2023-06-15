@@ -6,6 +6,18 @@ from sklearn.metrics import *
 import matplotlib.pyplot as plt
 
 
+def get_components(y_true, y_pred, label):
+    y_true_cls = (y_true == label).astype(int)
+    y_pred_cls = (y_pred == label).astype(int)
+
+    fp = sum(y_pred_cls[y_true_cls != 1])
+    tn = sum(y_pred_cls[y_true_cls == 0] == False)
+    tp = sum(y_pred_cls[y_true_cls == 1])
+    fn = sum(y_pred_cls[y_true_cls == 1] == False)
+
+    return fp, tn, tp, fn
+
+
 def get_acc_ci(rng, idx, y_true, y_pred):
     avg_acc = accuracy_score(y_true, y_pred)
     avg_accs = []
@@ -59,51 +71,157 @@ def get_sen_ci(rng, idx, y_true, y_pred, label, average_type):
     return round(sen_label, 5), round(s_label_lower, 5), round(s_label_upper, 5)
 
 
-def specificity(y_true: np.array, y_pred: np.array, classes: set = None):
-    specs = []
-    values = {'fp': [], 'tn': [], 'tp': [], 'fn': []}
-    for cls in classes:
-        # print('label:', cls)
-        y_true_cls = (y_true == cls).astype(int)
-        y_pred_cls = (y_pred == cls).astype(int)
-
-        fp = sum(y_pred_cls[y_true_cls != 1])
-        values['fp'].append(fp)
-        tn = sum(y_pred_cls[y_true_cls == 0] == False)
-        values['tn'].append(tn)
-        tp = sum(y_pred_cls[y_true_cls == 1])
-        values['tp'].append(tp)
-        fn = sum(y_pred_cls[y_true_cls == 1] == False)
-        values['fn'].append(fn)
-
+class Specificity():
+    def weighted_spec(self, specs, y_true):
+        weighted = 0
+        for i in range(len(specs)):
+            numofclass = list(y_true).count(i)
+            value = specs[i]*numofclass
+            weighted += value
+        self.avg_spec = weighted/len(y_true)   
+        return self.avg_spec
+    
+    
+    def specificity(self, y_true, y_pred, label, average_type):
+        fp, tn, tp, fn = get_components(y_true, y_pred, label)
         try:
-            specificity_val = tn / (tn + fp)
-            specs.append(specificity_val)
+            self.specificity_val = tn / (tn + fp)
         except ZeroDivisionError:
-            specificity_val = 0
-            specs.append(specificity_val)
+            self.specificity_val = 0
+            
+        if label==None:
+            specs = []
+            values = {'fp': [], 'tn': [], 'tp': [], 'fn': []}
+            classes = list(np.unique(y_true))
+            
+            for cls in classes:
+                fp, tn, tp, fn = get_components(y_true, y_pred, cls)
+                values['fp'].append(fp)
+                values['tn'].append(tn)
+                values['tp'].append(tp)
+                values['fn'].append(fn)
 
-    spec_fp = sum(values['fp'])
-    spec_tn = sum(values['tn'])
-    #spec_tp = sum(values['tp'])
-    #spec_fn = sum(values['fn'])
-    #print(spec_fn, spec_tp, spec_tn, spec_fp)
-    micro_avg_spec = spec_tn / (spec_fp + spec_tn)
-    macro_avg_sepc = np.mean(specs)    # 각 class별 score 평균
-    weighted_avg_spec = weighted_spec(specs, y_true)   # (각 class별 score * 각 class별 개수) / 전체 개수
-    # micro_avg_sen = spec_tp / (spec_tp + spec_fn)
-    # print('micro-avg-sen(검증용):', micro_avg_sen)
+                try:
+                    spec_val = tn / (tn + fp)
+                    specs.append(spec_val)
+                except ZeroDivisionError:
+                    spec_val = 0
+                    specs.append(spec_val)
 
-    return specs, macro_avg_sepc, weighted_avg_spec, micro_avg_spec
+            spec_fp = sum(values['fp'])
+            spec_tn = sum(values['tn'])
+            
+            if average_type=='micro':
+                self.specificity_val = spec_tn / (spec_fp + spec_tn)
+            elif average_type=='macro':
+                self.specificity_val = np.mean(specs)                    # 각 class별 score 평균
+            elif average_type=='weighted':
+                self.specificity_val = Specificity().weighted_spec(specs, y_true)   # (각 class별 score * 각 class별 개수) / 전체 개수
+            elif average_type=='binary':
+                self.specificity_val = specs[1]
 
-def weighted_spec(specs, y_true):
-    weighted = 0
-    for i in range(len(specs)):
-        numofclass = list(y_true).count(i)
-        value = specs[i]*numofclass
-        weighted += value
-    return weighted/len(y_true)
+        return self.specificity_val
+   
 
+    def get_spec_ci(self, rng, idx, y_true, y_pred, label, average_type):
+        self.specificity_val = Specificity().specificity(y_true, y_pred, label[0], average_type)
+        specs_label = []
+        
+        for i in range(1000):
+            pred_idx = rng.choice(idx, size=idx.shape[0], replace=True)
+            re_y_pred = y_pred[pred_idx]
+            re_y_true = y_true[pred_idx]
+            
+            spec_label_array = Specificity().specificity(re_y_true, re_y_pred, label[0], average_type)
+            specs_label.append(spec_label_array)
+
+        self.sp_label_lower = np.percentile(specs_label, 2.5)
+        self.sp_label_upper = np.percentile(specs_label, 97.5)
+        return round(self.specificity_val, 5), round(self.sp_label_lower, 5), round(self.sp_label_upper, 5)
+    
+    
+def PPV(y_true, y_pred, label):
+    fp, tn, tp, fn = get_components(y_true, y_pred, label)
+    ppv = tp / (tp+fp)
+    if np.isnan(ppv):
+        ppv=0
+    return ppv
+
+def NPV(y_true, y_pred, label):
+    fp, tn, tp, fn = get_components(y_true, y_pred, label)
+    npv = tn / (tn+fn)
+    if np.isnan(npv):
+        npv = 0
+    return npv
+    
+def get_ppv_ci(rng, idx, y_true, y_pred, label):
+    ppv_label = PPV(y_true, y_pred, label)
+    ppvs_label = []
+    
+    for i in range(1000):
+        pred_idx = rng.choice(idx, size=idx.shape[0], replace=True)
+        re_y_pred = y_pred[pred_idx]
+        re_y_true = y_true[pred_idx]
+        
+        ppv_label_array = PPV(re_y_true, re_y_pred, label)
+        ppvs_label.append(ppv_label_array)
+        
+    ppv_label_lower = np.percentile(ppvs_label, 2.5)
+    ppv_label_upper = np.percentile(ppvs_label, 97.5)
+    return round(ppv_label, 5), round(ppv_label_lower, 5), round(ppv_label_upper, 5)
+        
+def get_npv_ci(rng, idx, y_true, y_pred, label):
+    npv_label = NPV(y_true, y_pred, label)
+    npvs_label = []
+    
+    for i in range(1000):
+        pred_idx = rng.choice(idx, size=idx.shape[0], replace=True)
+        re_y_pred = y_pred[pred_idx]
+        re_y_true = y_true[pred_idx]
+        
+        npv_label_array = NPV(re_y_true, re_y_pred, label)
+        npvs_label.append(npv_label_array)
+        
+    npv_label_lower = np.percentile(npvs_label, 2.5)
+    npv_label_upper = np.percentile(npvs_label, 97.5)
+    return round(npv_label, 5), round(npv_label_lower, 5), round(npv_label_upper, 5)    
+
+
+
+
+def LR(y_true, y_pred, label, average_type):
+    sen = recall_score(y_true, y_pred, labels=label, average=average_type)
+    spec = Specificity().specificity(y_true, y_pred, label[0], average_type)
+    
+    lr_pos = sen/(1-spec)
+    if np.isnan(lr_pos):
+        lr_pos = 0
+        
+    lr_neg = (1-sen)/spec
+    if np.isnan(lr_neg):
+        lr_neg = 0
+       
+    return lr_pos, lr_neg
+
+def get_lr_ci(rng, idx, y_true, y_pred, label, average_type):
+    lr_pos, lr_neg = LR(y_true, y_pred, label, average_type)
+    lr_poses = []
+    lr_negs = []
+    
+    for i in range(1000):
+        pred_idx = rng.choice(idx, size=idx.shape[0], replace=True)
+        re_y_pred = y_pred[pred_idx]
+        re_y_true = y_true[pred_idx]
+        
+        lr_pos_array, lr_neg_array = LR(re_y_true, re_y_pred, label, average_type)
+        lr_poses.append(lr_pos_array)
+        lr_negs.append(lr_neg_array)
+    
+    print("LR+ :\n", lr_pos, np.percentile(lr_poses, 2.5), np.percentile(lr_poses, 97.5))
+    print("LR- :\n", lr_neg, np.percentile(lr_negs, 2.5), np.percentile(lr_negs, 97.5))
+
+    
+    
 
 def get_auc_ci(rng, idx, y_true, y_prob, label, average_type):
     if label == None:
