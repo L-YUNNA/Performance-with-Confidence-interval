@@ -1,4 +1,5 @@
 # Performance-with-Confidence-interval
+코드 사용 시, 출처 표기 바랍니다.
 
 ## reference
 다음 논문에서 사용한 confidence interval 알고리즘을 구현하였음
