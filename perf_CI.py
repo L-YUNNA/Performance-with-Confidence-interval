@@ -1,3 +1,6 @@
+### © 2023 Yun Na Lee <imyun0315@gmail.com>
+### 코드 사용 시, 출처 표기 바랍니다.
+### =============================================
 
 import numpy as np
 import seaborn as sns
