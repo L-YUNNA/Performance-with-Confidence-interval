@@ -13,10 +13,10 @@ def get_components(y_true, y_pred, label):
     y_true_cls = (y_true == label).astype(int)
     y_pred_cls = (y_pred == label).astype(int)
 
-    fp = sum(y_pred_cls[y_true_cls != 1])
+    fn = sum(y_pred_cls[y_true_cls != 1])
     tn = sum(y_pred_cls[y_true_cls == 0] == False)
     tp = sum(y_pred_cls[y_true_cls == 1])
-    fn = sum(y_pred_cls[y_true_cls == 1] == False)
+    fp = sum(y_pred_cls[y_true_cls == 1] == False)
 
     return fp, tn, tp, fn
 
