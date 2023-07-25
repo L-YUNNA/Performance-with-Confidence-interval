@@ -39,6 +39,24 @@ def get_acc_ci(rng, idx, y_true, y_pred):
     return round(avg_acc, 5), round(avg_acc_lower, 5), round(avg_acc_upper, 5)
 
 
+def get_precision_ci(rng, idx, y_true, y_pred, label, average_type):
+    pre_label = precision_score(y_true, y_pred, labels=label, average=average_type)
+    pres_label = []
+
+    for i in range(1000):
+        pred_idx = rng.choice(idx, size=idx.shape[0], replace=True)
+        re_y_pred = y_pred[pred_idx]
+        re_y_true = y_true[pred_idx]
+
+        pre_label_array = f1_score(re_y_true, re_y_pred, labels=label, average=average_type)
+        pres_label.append(pre_label_array)
+
+    pre_label_lower = np.percentile(pres_label, 2.5)
+    pre_label_upper = np.percentile(pres_label, 97.5)
+
+    return round(pre_label, 5), round(pre_label_lower, 5), round(pre_label_upper, 5)
+
+
 def get_f1_ci(rng, idx, y_true, y_pred, label, average_type):
     f1_label = f1_score(y_true, y_pred, labels=label, average=average_type)
     f1s_label = []
@@ -75,6 +93,7 @@ def get_sen_ci(rng, idx, y_true, y_pred, label, average_type):
 
 
 class Specificity():
+    
     def weighted_spec(self, specs, y_true):
         weighted = 0
         for i in range(len(specs)):
@@ -115,7 +134,10 @@ class Specificity():
             spec_tn = sum(values['tn'])
             
             if average_type=='micro':
-                self.specificity_val = spec_tn / (spec_fp + spec_tn)
+                try:
+                    self.specificity_val = spec_tn / (spec_fp + spec_tn)
+                except ZeroDivisionError:
+                    self.specificity_val = 0
             elif average_type=='macro':
                 self.specificity_val = np.mean(specs)                    # 각 class별 score 평균
             elif average_type=='weighted':
@@ -141,6 +163,9 @@ class Specificity():
         self.sp_label_lower = np.percentile(specs_label, 2.5)
         self.sp_label_upper = np.percentile(specs_label, 97.5)
         return round(self.specificity_val, 5), round(self.sp_label_lower, 5), round(self.sp_label_upper, 5)
+    
+
+    
     
     
 def PPV(y_true, y_pred, label):
@@ -220,11 +245,10 @@ def get_lr_ci(rng, idx, y_true, y_pred, label, average_type):
         lr_poses.append(lr_pos_array)
         lr_negs.append(lr_neg_array)
     
-    print("LR+ :\n", lr_pos, np.percentile(lr_poses, 2.5), np.percentile(lr_poses, 97.5))
-    print("LR- :\n", lr_neg, np.percentile(lr_negs, 2.5), np.percentile(lr_negs, 97.5))
+    print("LR+ :\n", lr_pos, round(np.percentile(lr_poses, 2.5),5), round(np.percentile(lr_poses, 97.5),5))
+    print("LR- :\n", lr_neg, round(np.percentile(lr_negs, 2.5),5), round(np.percentile(lr_negs, 97.5),5))
 
-    
-    
+
 
 def get_auc_ci(rng, idx, y_true, y_prob, label, average_type):
     if label == None:
@@ -257,7 +281,7 @@ def get_auc_ci(rng, idx, y_true, y_prob, label, average_type):
     return round(auc_label, 5), round(auc_label_lower, 5), round(auc_label_upper, 5)
 
 
-def get_cm(y_true, y_pred, save_name, label_name: list):   # labels = ['LM', 'GM', 'SSc']
+def get_cm(y_true, y_pred, save_path, label_name: list):   # labels = ['LM', 'GM', 'SSc']
     num_cls = len(np.unique(y_true))
     cm = confusion_matrix(y_true, y_pred)
 
@@ -269,7 +293,7 @@ def get_cm(y_true, y_pred, save_name, label_name: list):   # labels = ['LM', 'GM
     labels = np.asarray(labels).reshape(num_cls, num_cls)
 
     # cm/np.sum(cm))*70 여기서 곱하는 값을 바꿔서 색 조절
-    f = sns.heatmap((cm / np.sum(cm)) * 100, annot=labels, fmt='',
+    f = sns.heatmap((cm / np.sum(cm)) * 70, annot=labels, fmt='',
                     cmap='Blues', vmin=0, vmax=25, linewidths=0.1,
                     annot_kws={'size': '11'}, cbar_kws={'label': '(%)'})  # annot=True, fmt='.2%'
 
@@ -292,4 +316,4 @@ def get_cm(y_true, y_pred, save_name, label_name: list):   # labels = ['LM', 'GM
     plt.ylabel('True label', fontsize=12, labelpad=14)
 
     plt.tight_layout()
-    plt.savefig('./' + save_name + '.png')
+    plt.savefig(save_path)
